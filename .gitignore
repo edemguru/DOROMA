@@ -1,5 +1,7 @@
 # Created by https://www.gitignore.io
 
+
+
 ### Java ###
 *.class
 
@@ -15,7 +17,10 @@
 hs_err_pid*
 
 
+
 ### Eclipse ###
+
+# standard excludes
 *.pydevproject
 .metadata
 .gradle
@@ -48,9 +53,32 @@ local.properties
 .texlipse
 
 
+
 ### Linux ###
 *~
 
 # KDE directory preferences
 .directory
+
+
+
+### individual settings ###
+
+# exclude files
+**/*.class
+**/~*
+**/*.~*
+~*
+*.~*
+
+# exclude directories
+/.settings/**
+/build/**
+/log/**
+/reports/**
+/bin/**
+
+# include files
+!/Module.pdf
+
 
