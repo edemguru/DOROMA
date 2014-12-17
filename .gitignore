@@ -74,6 +74,7 @@ local.properties
 # exclude directories
 /.settings/**
 /build/**
+/build/
 /log/**
 /reports/**
 /bin/**
