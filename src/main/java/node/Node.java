@@ -13,7 +13,6 @@ import javax.script.ScriptException;
 import java.util.Map;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
-
 import node.tcp.TcpNodeController;
 import node.tcp.TcpNodeListener;
 import node.udp.UdpNodeSender;
@@ -39,6 +38,7 @@ public class Node implements INodeCli, Runnable {
 	private String operations;
 	private Message message = new Message();
 	private String logDir;
+	private Integer ressourceLevel = new Integer(0);
 
 
 	/**
@@ -195,6 +195,13 @@ public class Node implements INodeCli, Runnable {
 	private synchronized void setUdpTimer(Timer udpTimer) {
 		this.udpTimer = udpTimer;
 	}
+	
+	/**
+	 * @param ressourceLevel the current ressource level
+	 */
+	public synchronized void setRessourceLevel(Integer ressourceLevel) {
+		this.ressourceLevel = ressourceLevel;
+	}
 
 	/**
 	 * @return the nodeName
@@ -281,6 +288,13 @@ public class Node implements INodeCli, Runnable {
 	 */
 	private synchronized Timer getUdpTimer() {
 		return udpTimer;
+	}
+	
+	/**
+	 * @return the current ressource level
+	 */
+	public synchronized Integer getRessourceLevel() {
+		return ressourceLevel;
 	}
 
 	/**
@@ -481,9 +495,9 @@ public class Node implements INodeCli, Runnable {
 	}
 
 	@Override
+	@Command
 	public String resources() throws IOException {
-		// TODO Implement code
-		return "// TODO Implement code.";
+		return String.valueOf(this.getRessourceLevel());
 	}
 
 	// --- additional Commands not requested in assignment

@@ -9,6 +9,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.nio.channels.ClosedByInterruptException;
+import java.util.Set;
 import cli.Command;
 import cli.AdvancedShell;
 import controller.CloudController;
@@ -173,10 +174,14 @@ public class UdpControllerListener extends Thread implements IUdpControllerListe
 					// int udpPort = packet.getPort();
 					// getControllerShell().printLine(String.format("Packet received from Node '%s:%d': %s", address, udpPort, new String(packet.getData())));
 	
-					// add IP-Address to received packet (as String)
+					// add ip address to received packet (as String)
 					request = new String(packet.getData()) + " " + address.getCanonicalHostName();
 					// invoke available commands
 					try {
+						// if the request is a "!hello" command, add additional udp packet details
+						if (request.startsWith("!hello")) {
+							request = "!hello" + " " + address + " " + packet.getPort();
+						}	
 						response = getShell().invoke(request);
 					} catch (IllegalArgumentException e) {
 						response = getMessage().unknown_command;
@@ -294,6 +299,63 @@ public class UdpControllerListener extends Thread implements IUdpControllerListe
 			new ControllerNode(getController(), nodeAddress, nodePort, operations, timer);
 			return "New node " + nodeAddress + ":" + nodePort + " initialized."; 
 		}
+	}
+	
+	@Override
+	@Command
+	public String hello(String nodeAddress, Integer nodePort) throws IOException {
+		// send response
+		try {
+			String host = nodeAddress.split("/")[1];
+			int rmax = this.getController().getConfig().getInt("controller.rmax");
+
+			StringBuilder messageSb = new StringBuilder();
+			String whiteSpaceString = " ";
+		
+			messageSb.append("!init");
+			messageSb.append(whiteSpaceString);
+			
+			// get all active nodes
+			Set<ControllerNode> activeNodes = getController().getNodesMap(true).keySet();
+			
+			// loop through all nodes if possible
+			if (activeNodes.size() > 0) {
+				for ( ControllerNode currentNode : activeNodes) {
+					String toAppend = currentNode.getNodeAddress() + ":" + currentNode.getNodePort();
+					messageSb.append(toAppend);
+					messageSb.append(whiteSpaceString);
+				}
+				
+				// add whitespace (if neccessary)
+				if (messageSb.lastIndexOf(whiteSpaceString) < messageSb.length() -1) {
+					messageSb.append(whiteSpaceString);
+				}
+			} else {
+				// zero nodes connected, add "null" to the stringbuilder
+				messageSb.append("null");
+				// add whitespace (if neccessary)
+				if (messageSb.lastIndexOf(whiteSpaceString) < messageSb.length() -1) {
+					messageSb.append(whiteSpaceString);
+				}
+			}
+
+			// add rmax to stringbuilder
+			messageSb.append(rmax);
+			
+			this.getShell().printLine("Controller sending the following 'hello' response: " + messageSb.toString());
+			byte[] message = messageSb.toString().getBytes();
+
+			InetAddress address = InetAddress.getByName(host);
+			DatagramPacket packet = new DatagramPacket(message, message.length, address, nodePort);
+			DatagramSocket dsocket = new DatagramSocket();
+
+			dsocket.send(packet);
+			dsocket.close();
+		} catch (Exception e) {
+			getControllerShell().printErrLine("Error: " + e.toString());
+		}
+		
+	return "";
 	}
 
 }

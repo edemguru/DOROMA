@@ -5,12 +5,16 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
 import node.Node;
+import node.tcp.RessourceAgreementCollector;
 import cli.Command;
 import cli.AdvancedShell;
 import util.Config;
@@ -193,6 +197,29 @@ public class UdpNodeSender extends Thread implements IUdpNodeSenderCli {
 			// e.printStackTrace();
 		}
 	    getNodeShell().printLine(String.format("UDP-Sender is sending from port '%d', TCP-Listerner is on port '%d'!", udpPortNr, tcpPortNr));
+
+		String helloCommand = "!hello " + udpPortNr + " " + getConfig().getString("controller.host");
+		Object helloResponse = null;
+		try {
+			if (isAcceptCommands() && ! Thread.currentThread().isInterrupted()) {
+				helloResponse = getShell().invoke(helloCommand);
+				if (isAcceptCommands() && ! Thread.currentThread().isInterrupted()) {
+					Thread.sleep(timeout);
+				}
+			}
+		} catch (InterruptedException e) {
+			// do nothing, just close
+		} catch (Throwable e1) {
+			throw new RuntimeException("Invalid command '" + helloCommand + "'.", e1);
+		}
+		
+		// check output from "!hello" command
+		if (helloResponse.equals("NOK")) {
+			this.getShell().printErrLine("Ressource Level insufficient, not sending '!alive' messages to Controller !");
+			close();
+		} else {
+			this.getShell().printLine("Ressource Level ok, sending '!alive' messages to Controller");
+		}
 		
 		// public String alive(int udpPort, String operations, String address, int tcpPort) throws IOException {
 		String alive = "!alive " + udpPortNr + " " + operations + " " + getConfig().getString("controller.host") + " " + tcpPortNr;
@@ -307,4 +334,125 @@ public class UdpNodeSender extends Thread implements IUdpNodeSenderCli {
 		}
 		return "'isAlive'-package '" + alive + "' sent.";
 	}
+	
+	@Override
+	@Command
+	public String hello(int udpPort, String address) throws IOException {
+		InetAddress hostAddress;
+		try {
+			hostAddress = InetAddress.getByName(address);
+		} catch (UnknownHostException e) {
+			throw new RuntimeException(String.format("Unknown host '%s'.", address), e);
+		}
+		
+		String hello = "!hello" + " " + udpPort ;
+		byte[] buffer = hello.getBytes();
+
+		nodeShell.printLine(String.format("Sending 'hello' message '%s'.", hello));
+		try {
+			setPacket(new DatagramPacket(buffer, buffer.length, hostAddress, udpPort));
+			
+			// send udp hello packet to controller
+			if (isAcceptCommands() && ! Thread.currentThread().isInterrupted()) {
+				getSocket().send(getPacket());
+			} else {
+				return null; 
+			}
+		} catch (IOException | NullPointerException e) {
+			getNodeShell().printErrLine("Error occurred while sending 'hello' message: " + e.getMessage());
+			close();
+			return "Error occurred while sending 'hello' message: " + e.getMessage();
+		}
+		
+		getNodeShell().printLine(String.format("'hello'-package '%s' sent.", hello));
+
+		// wait for result
+		getNodeShell().printLine("Waiting for 'hello' package result");
+		buffer = new byte[2048];
+
+		DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+
+		this.getSocket().receive(packet);
+
+		String msg = new String(buffer, 0, packet.getLength());
+
+		getNodeShell().printLine(String.format("'hello' package result received: '%s'", msg));
+		
+		String msgToParse = msg;
+		String rmaxRgxString = "\\s(\\d+)";
+		Pattern rmaxRgxPattern = Pattern.compile(rmaxRgxString);
+		Matcher rmaxRgxMatcher = rmaxRgxPattern.matcher(msgToParse);
+		String rmax  = null;
+		
+		// find rmax using regex
+		Integer rmaxInt = null;
+		if (rmaxRgxMatcher.find()) {
+			rmax = rmaxRgxMatcher.group().trim();
+			rmaxInt = Integer.parseInt(rmax);
+			getNodeShell().printLine(String.format("Controller sent that rmax is: %s", rmax));
+		}
+
+		// check if there are zero nodes
+		boolean zeroNodesReturned = msgToParse.contains("!init null ");
+		
+		boolean localResssourceLevelIsSufficient = false;
+		int ressourceLevel = 0;
+		Integer rmin = this.getConfig().getInt("node.rmin");
+		ArrayList<String> nodeList = new ArrayList<String>();
+
+		// more than zero nodes returned, get all nodes and do ressource level calulations
+		if(!zeroNodesReturned) {
+
+			String nodesRgxString = "(\\w+:\\d+)";
+			Pattern nodesRgxPattern = Pattern.compile(nodesRgxString);
+			Matcher nodesRgxMatcher = nodesRgxPattern.matcher(msgToParse);
+			int nodeCnt = 0;
+
+			while (nodesRgxMatcher.find()) {
+				nodeCnt++;
+				String nodeMatchString = nodesRgxMatcher.group();
+				nodeList.add(nodeMatchString);
+			}
+
+			// calculate ressource level for each node
+			ressourceLevel = rmaxInt / (nodeCnt+1);
+	
+			// check if ressource level is sufficient for this node
+
+			localResssourceLevelIsSufficient = (ressourceLevel >= rmin); 
+		}	
+
+		// in case zero nodes are active, just check if rmin <= rMax (rmax sent by the controller)
+		if (zeroNodesReturned) {
+			String verifyMsg = "Zero nodes connected, verifiying that rmin %s if lower than rmax %s";
+			getNodeShell().printLine(String.format(verifyMsg, rmin, rmaxInt));
+			localResssourceLevelIsSufficient = (rmin <= rmaxInt);
+			ressourceLevel = rmin;
+		}
+	
+		getNodeShell().printLine(String.format("Ressource Level %s is sufficient: %s", ressourceLevel, localResssourceLevelIsSufficient));
+
+		Boolean agreementCollectorStarted = false;
+		Boolean agreementCollectionSuccessfull = null;
+
+		// start ressource agreement collector if there are nodes available
+		if (!zeroNodesReturned) {
+			RessourceAgreementCollector collector = new RessourceAgreementCollector(this.node, nodeList);
+			agreementCollectorStarted = true;
+			agreementCollectionSuccessfull = collector.doCollection(ressourceLevel);
+		}
+		
+		// collector was not started and local ressource level is sufficient -> is OK
+		if (!agreementCollectorStarted && localResssourceLevelIsSufficient) {
+			return "OK";
+		}
+		// collector was started, returned true and local ressource level is sufficient -> is OK
+		else if (agreementCollectorStarted && localResssourceLevelIsSufficient && agreementCollectionSuccessfull) {
+			return "OK";
+		// anything else ->  is NOT OK
+		} else {
+			return "NOK";
+		}
+	}
+
 }

@@ -15,12 +15,9 @@ import java.nio.channels.ClosedByInterruptException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.MissingResourceException;
-
 import node.Node;
 import cli.Command;
 import cli.AdvancedShell;
-import util.Config;
 import util.Message;
 
 /**
@@ -404,6 +401,33 @@ public class TcpNodeController extends Thread implements ITcpNodeControllerCli, 
 		
 		getNodeShell().printLine("Response: " + response);
 		return response;
+	}
+	
+	@Override
+	@Command
+	public String share(int ressourceLevel) {
+		String newLineString = System.getProperty("line.separator");
+		String result = "";
+		
+		if (ressourceLevel >= this.getNode().getConfig().getInt("node.rmin")) {
+			result = "!ok";
+		} else {
+			result = "!nok";
+		}
+		return result + newLineString;
+	}
+	
+	@Override
+	@Command
+	public String rollback(int ressourceLevel) {
+		return String.format("Rollback command received for ressource level '%s'", ressourceLevel);
+	}
+	
+	@Override
+	@Command
+	public String commit(int ressourceLevel) {
+		this.getNode().setRessourceLevel(ressourceLevel);
+		return String.format("Commit command received for ressource level '%s'", ressourceLevel);
 	}
 
 }

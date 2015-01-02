@@ -9,7 +9,6 @@ import controller.CloudController;
 import controller.tcp.TcpControllerClient;
 import controller.tcp.TcpControllerNode;
 import cli.AdvancedShell;
-// import util.Message;
 
 /**
  * Object to organize all TCP-controller-node-objects 
