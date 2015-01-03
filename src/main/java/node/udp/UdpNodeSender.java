@@ -382,6 +382,7 @@ public class UdpNodeSender extends Thread implements IUdpNodeSenderCli {
 
 		getNodeShell().printLine(String.format("'hello' package result received: '%s'", msg));
 		
+		String[] parts = msg.split("\\s");
 		String msgToParse = msg;
 		String rmaxRgxString = "\\s(\\d+)";
 		Pattern rmaxRgxPattern = Pattern.compile(rmaxRgxString);
@@ -391,7 +392,8 @@ public class UdpNodeSender extends Thread implements IUdpNodeSenderCli {
 		// find rmax using regex
 		Integer rmaxInt = null;
 		if (rmaxRgxMatcher.find()) {
-			rmax = rmaxRgxMatcher.group().trim();
+			//rmax = rmaxRgxMatcher.group().trim();
+			rmax = parts[2];
 			rmaxInt = Integer.parseInt(rmax);
 			getNodeShell().printLine(String.format("Controller sent that rmax is: %s", rmax));
 		}
