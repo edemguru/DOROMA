@@ -38,7 +38,7 @@ public interface INodeCli {
 	
 	/**
 	 * Prints out information about the current resource level of the node (the
-	 * amount of resources of the last negotiation).
+	 * amount of resources since the last negotiation).
 	 * 
 	 * @return the current resource level of the node
 	 * @throws IOException
@@ -65,5 +65,4 @@ public interface INodeCli {
 	 *             if an I/O error occurs
 	 */
 	String help() throws IOException;
-
 }

@@ -9,7 +9,6 @@ import org.junit.runners.model.Statement;
 
 import test.Constants;
 
-import java.lang.annotation.Annotation;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Collections;
