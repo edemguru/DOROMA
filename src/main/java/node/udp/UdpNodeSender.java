@@ -382,16 +382,10 @@ public class UdpNodeSender extends Thread implements IUdpNodeSenderCli {
 
 		getNodeShell().printLine(String.format("'hello' package result received: '%s'", msg));
 		
-		String[] parts = msg.split("\\s");
-		String rmax  = null;
-		
 		// find rmax using regex
-		Integer rmaxInt = null;
-		if (parts.length == 3) {
-			rmax = parts[2];
-			rmaxInt = Integer.parseInt(rmax);
-			getNodeShell().printLine(String.format("Controller sent that rmax is: %s", rmax));
-		}
+		String rmax = msg.split("\\s")[msg.split("\\s").length - 1];
+		Integer rmaxInt = Integer.parseInt(rmax);
+		getNodeShell().printLine(String.format("Controller sent that rmax is: %s", rmax));
 
 		// check if there are zero nodes
 		boolean zeroNodesReturned = msg.contains("!init null ");
@@ -404,7 +398,7 @@ public class UdpNodeSender extends Thread implements IUdpNodeSenderCli {
 		// more than zero nodes returned, get all nodes and do ressource level calulations
 		if(!zeroNodesReturned) {
 
-			String nodesRgxString = "(\\w+:\\d+)";
+			String nodesRgxString = "((\\w+\\.)*\\w+:\\d+)";
 			Pattern nodesRgxPattern = Pattern.compile(nodesRgxString);
 			Matcher nodesRgxMatcher = nodesRgxPattern.matcher(msg);
 			int nodeCnt = 0;
