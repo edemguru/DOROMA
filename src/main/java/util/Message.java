@@ -19,6 +19,7 @@ public class Message {
 	public final String zero_division;
 	public final String shutdown;
 	public final String illegal_arguments;
+	public final String authentication_failed;
 	
 	/**
 	 * Init constants, so no getters needed to access them later
@@ -37,6 +38,7 @@ public class Message {
 			zero_division = message.getString("zero_division");
 			shutdown = message.getString("shutdown");
 			illegal_arguments = message.getString("illegal_arguments");
+			authentication_failed = message.getString("authentication_failed");
 		} catch (MissingResourceException e) {
 			throw new RuntimeException("Invalid message-property!", e);
 		}

@@ -30,19 +30,14 @@ public class ControllerUser {
 	private int loggedIn = 0;
 	private String userId = null;
 	private String password = null;
+	private byte[] challenge = null;
 	private long credits = 0;
 	private Config config;
 	
 
-	/**
-	 * @param controller cloud controller object
-	 * @param userId
-	 * @param password
-	 */
-	public ControllerUser(CloudController controller, String userId, String password) {
+	public ControllerUser(CloudController controller, String userId) {
 		this.setController(controller);
 		this.setUserId(userId);
-		this.setPassword(password);
 		
 		onLogin();
 		setConfig(new Config("user"));
@@ -53,6 +48,16 @@ public class ControllerUser {
 
 		// register in shared list to be accessible from outside, even if this is not a really thread, just an object
 		this.getController().getThreadsMap().put(this, getThreadType());
+	}
+	
+	/**
+	 * @param controller cloud controller object
+	 * @param userId
+	 * @param password
+	 */
+	public ControllerUser(CloudController controller, String userId, String password) {
+		this(controller, userId);
+		this.setPassword(password);
 	}
 
 	/**

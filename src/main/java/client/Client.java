@@ -1,6 +1,7 @@
 package client;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -10,15 +11,23 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.net.ConnectException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
-import util.Config;
-import util.Message;
 import cli.Command;
 import cli.AdvancedShell;
+import util.Config;
+import util.Keys;
+import util.Message;
+import util.SecurityUtils;
+import util.SecurityUtils.Encryption;
 
 public class Client implements IClientCli, Runnable {
 
@@ -33,6 +42,10 @@ public class Client implements IClientCli, Runnable {
 	private boolean acceptCommands = true;
 	private Message message = new Message();
 	private Thread shellThread;
+	private PublicKey controllerPublicKey;
+	private PrivateKey userPrivateKey;
+	private SecretKey secretKey;
+	private IvParameterSpec initVector;
 
 	/**
 	 * @param clientName
@@ -222,6 +235,62 @@ public class Client implements IClientCli, Runnable {
 	}
 
 	/**
+	 * @return the controllerPublicKey
+	 */
+	private synchronized PublicKey getControllerPublicKey() {
+		return controllerPublicKey;
+	}
+
+	/**
+	 * @param controllerPublicKey the controllerPublicKey to set
+	 */
+	private synchronized void setControllerPublicKey(PublicKey controllerPublicKey) {
+		this.controllerPublicKey = controllerPublicKey;
+	}
+
+	/**
+	 * @return the userPrivateKey
+	 */
+	private synchronized PrivateKey getUserPrivateKey() {
+		return userPrivateKey;
+	}
+
+	/**
+	 * @param userPrivateKey the userPrivateKey to set
+	 */
+	private synchronized void setUserPrivateKey(PrivateKey userPrivateKey) {
+		this.userPrivateKey = userPrivateKey;
+	}
+
+	/**
+	 * @return the secretKey
+	 */
+	private synchronized SecretKey getSecretKey() {
+		return secretKey;
+	}
+
+	/**
+	 * @param secretKey the secretKey to set
+	 */
+	private synchronized void setSecretKey(SecretKey secretKey) {
+		this.secretKey = secretKey;
+	}
+
+	/**
+	 * @return the initVector
+	 */
+	private synchronized IvParameterSpec getInitVector() {
+		return initVector;
+	}
+
+	/**
+	 * @param initVector the initVector to set
+	 */
+	private synchronized void setInitVector(IvParameterSpec initVector) {
+		this.initVector = initVector;
+	}
+
+	/**
 	 * @param args
 	 *            the first argument is the name of the {@link Client} component
 	 */
@@ -271,14 +340,180 @@ public class Client implements IClientCli, Runnable {
 	}
 	
 	/**
-	 * Wrapper for 'response(String request, boolean loggedIn)'
-	 * Defaults to loggedIn = true
+	 * Wrappers for 'byte[] request(Encryption encryption, byte[] data, boolean loggedIn)'
 	 * 
-	 * @param request
+	 * @param encryption default to AES
+	 * @param data
+	 * @param loggedIn defaults to true
+	 * @return
+	 */
+	private String sendRequest(String data) {
+		String result= null;
+		byte[] request = null;
+		if (data != null) {
+			request = data.getBytes();
+		}
+		byte[] response = sendRequest(Encryption.AES, request, true);
+		if (response != null) {
+			result = new String(response);
+		}
+		return result;
+	}
+	private String sendRequest(String data, boolean loggedIn) {
+		String result= null;
+		byte[] request = null;
+		if (data != null) {
+			request = data.getBytes();
+		}
+		byte[] response = sendRequest(Encryption.AES, request, loggedIn);
+		if (response != null) {
+			result = new String(response);
+		}
+		return result;
+	}
+	private String sendRequest(Encryption encryption, String data) {
+		String result= null;
+		byte[] request = null;
+		if (data != null) {
+			request = data.getBytes();
+		}
+		byte[] response = sendRequest(encryption, request, true);
+		if (response != null) {
+			result = new String(response);
+		}
+		return result;
+	}
+	private String sendRequest(Encryption encryption, String data, boolean loggedIn) {
+		String result= null;
+		byte[] request = null;
+		if (data != null) {
+			request = data.getBytes();
+		}
+		byte[] response = sendRequest(encryption, request, loggedIn);
+		if (response != null) {
+			result = new String(response);
+		}
+		return result;
+	}
+	private byte[] sendRequest(byte[] data) {
+		return sendRequest(Encryption.AES, data, true);
+	}
+	private byte[] sendRequest(byte[] data, boolean loggedIn) {
+		return sendRequest(Encryption.AES, data, loggedIn);
+	}
+	private byte[] sendRequest(Encryption encryption, byte[] data) {
+		return sendRequest(encryption, data, true);
+	}
+	/**
+	 * @brief crypto-Wrapper for sending and receiving data using 'response()'
+	 * 
+	 * @param encryption
+	 * @param data
+	 * @param loggedIn
+	 * @return
+	 */
+	private byte[] sendRequest(Encryption encryption, byte[] data, boolean loggedIn) {
+		byte[] encryptData;
+		byte[] decryptData;
+		byte[] encodeData;
+		byte[] decodeData;
+		byte[] responseData;
+		// getShell().printLine("Request(" + encryption + ", " + loggedIn + "): '" + new String(data) + "'.");
+		if (data == null) {
+			getShell().printLine("Error: No data to send!");
+			return null;
+		} else if (encryption == Encryption.RAW) {
+			return recvResponse(data, loggedIn);
+		} else if (encryption == Encryption.RSA) {
+			// encrypt data
+			encryptData = SecurityUtils.encryptRSA(data, getControllerPublicKey());
+			if (encryptData == null) {
+				getShell().printLine("Error: Can't RSA-encrypt request: '" + new String(data) + "'!");
+				return null;
+			}
+			// encode Base64 (binary to char)
+			encodeData = SecurityUtils.encodeB64(encryptData);
+			if (encodeData == null) {
+				getShell().printLine("Error: Can't Base64-encode request: '" + new String(data) + "'!");
+				return null;
+			}
+			// send request
+			responseData = recvResponse(encodeData, loggedIn);
+			if (responseData == null) {
+				getShell().printLine("Error: No data received!");
+				return null;
+			}
+			if (new String(responseData).equals("?")) {
+				// Mist auf der Leitung, wenn der Server den Socket abwürgt
+				return null;
+			}
+			// decode Base64 (char to binary)
+			decodeData = SecurityUtils.decodeB64(responseData);
+			if (decodeData == null) {
+				getShell().printLine("Error: Can't Base64-decode response: '" + new String(responseData) + "'!");
+				return null;
+			}
+			// decrypt data
+			decryptData = SecurityUtils.decryptRSA(decodeData, getUserPrivateKey());
+			if (decryptData == null) {
+				getShell().printLine("Error: Can't RSA-decrypt response: '" + new String(responseData) + "'!");
+				return null;
+			}
+			// getShell().printLine("Response(" + encryption + ", " + loggedIn + "): '" + new String(decryptData) + "'.");
+			return decryptData; 
+		} else if (encryption == Encryption.AES) {
+			// encrypt data
+			encryptData = SecurityUtils.encryptAES(data, getSecretKey(), getInitVector());
+			if (encryptData == null) {
+				getShell().printLine("Error: Can't AES-encrypt request: '" + new String(data) + "'!");
+				return null;
+			}
+			// encode Base64 (binary to char)
+			encodeData = SecurityUtils.encodeB64(encryptData);
+			if (encodeData == null) {
+				getShell().printLine("Error: Can't Base64-encode request: '" + new String(data) + "'!");
+				return null;
+			}
+			// send request
+			responseData = recvResponse(encodeData, loggedIn);
+			if (responseData == null) {
+				getShell().printLine("Error: No data received!");
+				return null;
+			}
+			// decode Base64 (char to binary)
+			decodeData = SecurityUtils.decodeB64(responseData);
+			if (decodeData == null) {
+				getShell().printLine("Error: Can't Base64-decode response: '" + new String(responseData) + "'!");
+				return null;
+			}
+			// decrypt data
+			decryptData = SecurityUtils.decryptAES(decodeData, getSecretKey(), getInitVector());
+			if (decryptData == null) {
+				getShell().printLine("Error: Can't AES-decrypt response: '" + new String(responseData) + "'!");
+				return null;
+			}
+			// getShell().printLine("Response(" + encryption + ", " + loggedIn + "): '" + new String(decryptData) + "'.");
+			return decryptData; 
+		} else {
+			return ("/* TODO: implement code in 'sendRequest()' */").getBytes();
+		}
+	}
+	
+	/**
+	 * Wrappers for 'byte[] response(byte[] request, boolean loggedIn)'
+	 * 
+	 * @param request is mandatory
+	 * @param loggedIn defaults to true
 	 * @return response
 	 */
-	private String response(String request) {
-		return response(request, true);
+	private String recvResponse(String request) {
+		return new String(recvResponse(request.getBytes(), true));
+	}
+	private String recvResponse(String request, boolean loggedIn) {
+		return new String(recvResponse(request.getBytes(), loggedIn));
+	}
+	private byte[] recvResponse(byte[] request) {
+		return recvResponse(request, true);
 	}
 	/**
 	 * Sends request to controller and waits for response
@@ -287,8 +522,9 @@ public class Client implements IClientCli, Runnable {
 	 * @param loggedIn
 	 * @return response
 	 */
-	private String response(String request, boolean loggedIn) {
+	private byte[] recvResponse(byte[] request, boolean loggedIn) {
 		String inString = "";
+		String requestString = new String(request);
 
 		if (isAcceptCommands()) {
 			if (loggedIn && ! loggedIn()) {
@@ -308,9 +544,10 @@ public class Client implements IClientCli, Runnable {
 					closeTCP();
 					return null;
 				}
+
 				// write provided user input to the socket
-				serverWriter.println(request);
-				
+				serverWriter.println(requestString);
+
 				// create a reader to retrieve messages send by the server
 				BufferedReader serverReader = new BufferedReader(new InputStreamReader(getControllerSocket().getInputStream()));
 				// read server response
@@ -326,7 +563,7 @@ public class Client implements IClientCli, Runnable {
 							getShell().printErrLine("!Error: Read-Problems!");
 							closeTCP();
 							try {
-								return (String) getShell().invoke(request);
+								return (byte[]) getShell().invoke(requestString);
 							} catch (Throwable e) {
 								return null;
 							}
@@ -334,7 +571,7 @@ public class Client implements IClientCli, Runnable {
 						inString += myChar.toString();
 					}
 				}
-				if (inString == null && request.trim().equals("!exit")) {
+				if (inString == null && requestString.trim().equals("!exit")) {
 					// disconnected, wie von "!exit" geplant
 					inString = getMessage().controller_disconnected;
 				} else if (inString == null || inString.contains(getMessage().controller_disconnected)) {
@@ -342,7 +579,7 @@ public class Client implements IClientCli, Runnable {
 					getShell().printErrLine(getMessage().controller_disconnected);
 					closeTCP();
 					try {
-						return (String) getShell().invoke(request);
+						return (byte[]) getShell().invoke(requestString);
 					} catch (Throwable e) {
 						return null;
 					}
@@ -355,7 +592,7 @@ public class Client implements IClientCli, Runnable {
 				getShell().printErrLine(getMessage().controller_disconnected);
 				closeTCP();
 				try {
-					return (String) getShell().invoke(request);
+					return (byte[]) getShell().invoke(requestString);
 				} catch (Throwable e1) {
 					return null;
 				}
@@ -363,13 +600,13 @@ public class Client implements IClientCli, Runnable {
 				getShell().printErrLine("!Error: Unknown communication problem!");
 				closeTCP();
 				try {
-					return (String) getShell().invoke(request);
+					return (byte[]) getShell().invoke(requestString);
 				} catch (Throwable e1) {
 					return null;
 				}
 			}
-			// return the server response which will be written on console
-			return inString;
+			// return the server response, which will be written on console
+			return inString.getBytes();
 		} else {
 			getShell().printErrLine(getMessage().controller_disconnected);
 			// closeTCP();
@@ -441,6 +678,8 @@ public class Client implements IClientCli, Runnable {
 		 * you specify them correctly in the client properties file(see
 		 * client.properties)
 		 */
+	// --- not supported any longer --- //
+		/*
 		String port = "";
 		int portNr = 0;
 		try {
@@ -476,7 +715,9 @@ public class Client implements IClientCli, Runnable {
 		// unsuccessful
 		closeTCP();
 		return response;
+		*/
 		
+		return message.unknown_command;
 	}
 
 	/* (non-Javadoc)
@@ -487,7 +728,7 @@ public class Client implements IClientCli, Runnable {
 	public String logout() throws IOException {
 
 		// just inform the Controller
-		String response  = response("!logout");
+		String response  = sendRequest("!logout");
 		closeTCP();
 
 		// release all User specific state information
@@ -518,7 +759,7 @@ public class Client implements IClientCli, Runnable {
 
 		// also try to terminate Controller's ClientThread
 		if (getControllerSocket() != null && ! getControllerSocket().isClosed()) {
-			response = response("!exit", false);
+			response = sendRequest("!exit", false);
 		}
 
 		// close all Sockets, Threads, Timer, ...
@@ -539,11 +780,163 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String authenticate(String username) throws IOException {
+
+		if (loggedIn()) {
+			return "Error: You are already logged in!";
+		}
 		
-		// TODO Implement code.
-		
-		return "// TODO Implement code.";
-		
+		/*
+		 * create a new tcp socket at specified host and port - make sure
+		 * you specify them correctly in the client properties file(see
+		 * client.properties)
+		 */
+		String port = "";
+		int portNr = 0;
+		try {
+			// get port term and calculate expression 
+			port = getConfig().getString("controller.tcp.port");
+		    ScriptEngineManager mgr = new ScriptEngineManager();
+		    ScriptEngine engine = mgr.getEngineByName("JavaScript");
+		    portNr = ((Double) engine.eval(port)).intValue();
+
+		    setControllerSocket(new Socket(getConfig().getString("controller.host"), portNr));
+		} catch (ScriptException e) {
+			return "!Error: Invalid port expression '" + port + "'.";
+			// return "!Error: Invalid port expression '" + port + "'.\n" + e.getMessage() + "\n" +e.getStackTrace().toString();
+		} catch (UnknownHostException | ConnectException e) {
+			closeTCP();
+			return "!Error: Cannot connect to controller at '" + getConfig().getString("controller.host") + "'.";
+//			return "!Error: Cannot connect to controller at '" + getConfig().getString("controller.host") + "'.\n" + e.getMessage() + "\n" +e.getStackTrace().toString();
+		} catch (SocketException e) {
+			closeTCP();
+			return "!Error: Cannot connect to controller at '" + getConfig().getString("controller.host") + "'.";
+//			return "!Error: Cannot connect to controller at '" + getConfig().getString("controller.host") + "'.\n" + e.getMessage() + "\n" +e.getStackTrace().toString();
+		} catch (IOException e) {
+			close();
+			throw new RuntimeException(e.getClass().getSimpleName(), e);
+		}
+
+		// Secure Authentication:
+		// 0.  Prepare system
+		// 0.a Make sure BouncyCastle is registred
+		SecurityUtils.registerBouncyCastle();
+
+		// 0.b RSA cipher: set cloud-controller's public key
+		String keyPath = System.getProperty("user.dir") + File.separator + getConfig().getString("controller.key");
+		keyPath = keyPath.replace("/", File.separator);
+		File keyFile = new File(keyPath);
+		if (! keyFile.exists()) {
+			// unsuccessful: no controller key file
+			closeTCP();
+			getShell().printLine("!Error: Can't find controller-key file '" + keyPath + "'!");
+			return getMessage().authentication_failed;
+		}
+		setControllerPublicKey(Keys.readPublicPEM(keyFile));
+
+		// 0.c RSA cipher: set users private key
+		keyPath = System.getProperty("user.dir") + File.separator + getConfig().getString("keys.dir") +
+				File.separator + username + ".pem";
+		keyPath = keyPath.replace("/", File.separator);
+		keyFile = new File(keyPath);
+		if (! keyFile.exists()) {
+			// unsuccessful: no user key file
+			closeTCP();
+			getShell().printLine("!Error: Can't find user-key file '" + keyPath + "'!");
+			return getMessage().authentication_failed;
+		}
+		setUserPrivateKey(Keys.readPrivatePEM(keyFile));
+
+		// 0.d RSA cipher: generate 32-byte client-challenge
+		byte[] clientChallenge = SecurityUtils.encodeB64(SecurityUtils.randomNumber(32));
+
+
+		// 1.  1st Message: send RSA request
+		// 1.a RSA cipher: send encrypted !authenticate-message
+		byte[] message = SecurityUtils.concat(("!authenticate " + username + " ").getBytes(), clientChallenge);
+
+		// encrypt entire message, send message and decrypt response
+		byte[] response = sendRequest(Encryption.RSA, message, false);
+
+		// 2.  2nd Message: receive RSA-encoded authentication response
+		// 2.a check response
+		if (response == null) {
+			// unsuccessful: no response
+			closeTCP();
+			getShell().printLine("!Error: No response to Message 1 '" + message + "'!");
+			return getMessage().authentication_failed;
+		}
+		String responseString = new String(response);
+		String[] parts = responseString.split("\\s+");
+		if (parts.length != 5) {
+			// unsuccessful: wrong number of arguments
+			closeTCP();
+			getShell().printLine("!Error: wrong number of arguments in '" + responseString + "'!");
+			return getMessage().authentication_failed;
+		}
+		if (! parts[0].equals("!ok")) {
+			// unsuccessful: missing '!ok'
+			closeTCP();
+			getShell().printLine("!Error: missing '!ok' keyword in '" + responseString + "'!");
+			return getMessage().authentication_failed;
+		}
+		// check challenge
+		byte[] testChallenge = SecurityUtils.subarray(response, responseString.indexOf(parts[1]), parts[1].length()); 
+		// getShell().printLine("Test challenge '" + new String(testChallenge) + "' against '" + new String(clientChallenge) + "'.");
+		if (! new String(testChallenge).equals(new String(clientChallenge))) {
+			// unsuccessful: wrong client-challenge
+			closeTCP();
+			getShell().printLine("!Error: wrong client-challenge in '" + responseString + "' instead of '" + 
+						new String(SecurityUtils.encodeB64(clientChallenge)) + "'!");
+			return getMessage().authentication_failed;
+		}
+
+		// 2.b keep controllerChallenge Bas64-encoded
+		byte[] controllerChallenge = SecurityUtils.subarray(response, responseString.indexOf(parts[2]), parts[2].length());
+
+		// 2.c save secret key
+		byte[] secretKey = SecurityUtils.decodeB64(
+				SecurityUtils.subarray(response, responseString.indexOf(parts[3]), parts[3].length()));
+		if ((secretKey.length * 8) != 256) {		// 256 bits!
+			// unsuccessful: wrong secret key length
+			closeTCP();
+			getShell().printLine("!Error: wrong secret key length in '" + response + "'!");
+			return getMessage().authentication_failed;
+		}
+		setSecretKey(new SecretKeySpec(secretKey, 0, secretKey.length, "AES"));
+
+		// 2.d save initialization vector
+		byte[] initVector = SecurityUtils.decodeB64(
+				SecurityUtils.subarray(response, responseString.indexOf(parts[4]), parts[4].length()));
+		if (initVector.length != 16) {
+			// unsuccessful: wrong initialization vector length
+			closeTCP();
+			getShell().printLine("!Error: wrong initialization vector length in '" + response + "'!");
+			return getMessage().authentication_failed;
+		}
+		setInitVector(new IvParameterSpec(initVector));
+
+		// from now on use AES-encryption
+
+		// 3.  3rd Message: return (AES) controller-challenge
+		response = sendRequest(controllerChallenge, false);
+		// check response
+		if (response == null) {
+			// unsuccessful: no response
+			closeTCP();
+			getShell().printLine("!Error: No response to Message 3 '" + controllerChallenge + "'!");
+			return getMessage().authentication_failed;
+		}
+		responseString = new String(response);
+		if (! responseString.equals(getMessage().login_success)) {
+			// unsuccessful: no success
+			closeTCP();
+			getShell().printLine("!Error: Incorrect answer '" + responseString + "' to Message 3 '" + new String(controllerChallenge) + "'!");
+			return getMessage().authentication_failed;
+		}
+
+		// finally successful authenticated
+		this.setLoggedInUser(username);
+		return responseString;
 	}
 
 	// --- additional Commands not requested in assignment
@@ -561,7 +954,8 @@ public class Client implements IClientCli, Runnable {
 		if (! loggedIn()) {
 			// return local commands only
 			String usage = "\navailable Commands:\n";
-			usage += "\t!login <userid> <password>\n";
+			// usage += "\t!login <userid> <password>\n";
+			usage += "\t!authenticate <userid>\n";
 			usage += "\t!exit\n";
 			usage += "\t!help\n";
 
@@ -569,7 +963,7 @@ public class Client implements IClientCli, Runnable {
 		}
 
 		// get remote client help information
-		return response("!help");
+		return sendRequest("!help");
 	}
 
 	// Try command on remote site, not executable by the client shell 
@@ -581,7 +975,7 @@ public class Client implements IClientCli, Runnable {
 
 		// only if logged in pass command to controller 
 		if (loggedIn() && isAcceptCommands()) {
-			return response(command);
+			return sendRequest(command);
 		}
 		if (isAcceptCommands()) {
 			// Command not found

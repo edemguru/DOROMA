@@ -295,12 +295,16 @@ public class UdpNodeSender extends Thread implements IUdpNodeSenderCli {
 			setPacket(new DatagramPacket(buffer, buffer.length, hostAddress, udpPort));
 			
 			// send UDP-isAlive-packet to controller
-			if (isAcceptCommands() && ! Thread.currentThread().isInterrupted()) {
+			if (getSocket() == null) {
+				getNodeShell().printErrLine("Error occurred while sending 'isAlive' packages.");
+				close();
+				return "Error occurred while sending 'isAlive' packages.";
+			} else if (isAcceptCommands() && ! Thread.currentThread().isInterrupted()) {
 				getSocket().send(getPacket());
 			} else {
 				return null; 
 			}
-		} catch (IOException | NullPointerException e) {
+		} catch (IOException e) {
 			getNodeShell().printErrLine("Error occurred while sending 'isAlive' packages: " + e.getMessage());
 			close();
 			return "Error occurred while sending 'isAlive' packages: " + e.getMessage();

@@ -582,6 +582,9 @@ public class CloudController implements ICloudControllerCli, Runnable {
 			nodeCount++;
 			result += String.format(format, nodeCount, node.getNodeAddress(), node.getNodePort(), (node.isActive() ? "online" : "offline"), node.getOperations(), node.getUsage());
 		}
+		if (nodeCount == 0) {
+			result = "No nodes are active.";
+		}
 		return result;
 
 	}
@@ -599,6 +602,9 @@ public class CloudController implements ICloudControllerCli, Runnable {
 		for (ControllerUser user : getUsersMap().keySet()) {
 			userCount++;
 			result += String.format(format, userCount, user.getUserId(), (user.isLoggedIn() ? String.format((user.getLoggedIn() == 1 ? "online %d time" : "online %d times"), user.getLoggedIn()) : "offline"), user.getCredits());
+		}
+		if (userCount == 0) {
+			result = "No users are logged in.";
 		}
 		return result;
 

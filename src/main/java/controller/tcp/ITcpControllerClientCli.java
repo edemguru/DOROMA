@@ -128,7 +128,7 @@ public interface ITcpControllerClientCli {
 	 * Authenticates the client with the provided username and key.
 	 * <p/>
 	 * <b>Request</b>:<br/>
-	 * {@code !login &lt;username&gt; &lt;client-challenge&gt;}<br/>
+	 * {@code !authenticate &lt;username&gt;}<br/>
 	 * <b>Response:</b><br/>
 	 * {@code !ok &lt;client-challenge&gt; &lt;controller-challenge&gt; &lt; secret-key&gt; &lt;iv-parameter&gt;}
 	 * <br/>
